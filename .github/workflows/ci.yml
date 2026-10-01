@@ -23,8 +23,9 @@ permissions:
   contents: read
 
 jobs:
-  # The CORE layer: pricing, bridge, buckets, task catalogue. Needs neither the LAMP repository nor
-  # the network. This is the part an outsider can clone and run, so it is the mandatory gate.
+  # The TypeScript layer: op_declaration parser, MAGIC price arithmetic, consume plan. Pure code,
+  # no network, no other repository. The job name is kept unchanged on purpose: it is the
+  # branch-protection context.
   core:
     name: Core (tsc + vitest)
     runs-on: ubuntu-latest
@@ -35,18 +36,10 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
-      # The bridge layer imports LAMP code through `vendor/lamp` (a pinned commit — see
-      # scripts/pin-lamp.sh) and that repository is not present here. So this job checks the core
-      # only, and SAYS SO — blunter than letting a green check imply it covered things it never
-      # touched.
       - run: npx tsc --noEmit -p tsconfig.core.json
-      - run: npx vitest run tests/feeEngine.test.ts tests/bridge.test.ts tests/custodyAddress.test.ts
-      - name: What this job does not cover
-        run: |
-          echo "NOT covered here: src/treasuryClient.ts, e2e/, scripts/*_preview.ts."
-          echo "They import LAMP code via vendor/lamp — needs the LAMP repo on disk."
-          echo "Covered instead by tests/custodyAddress.test.ts, which pins the deployed"
-          echo "custody address against the vendored blueprint without needing LAMP."
+      # Every test file under tests/ (vitest.config.ts), not a hand-picked list: a list goes stale
+      # silently when a file is added.
+      - run: npx vitest run
 
   # Aiken contracts. Runs only when onchain/ is present on the branch being checked: it lives on
   # the CARP branch, not on main.
@@ -60,7 +53,7 @@ jobs:
           if [ -d onchain/orilife_treasury ]; then echo "present=yes" >> "$GITHUB_OUTPUT";
           else echo "present=no" >> "$GITHUB_OUTPUT"; echo "No onchain/ on this branch — skipping."; fi
       # Pinned: the script hash depends on the compiler version. The blueprint currently in use was
-      # produced by Aiken v1.1.21 (read from the `preamble` of vendor/treasury-custody.plutus.json).
+      # produced by Aiken v1.1.21 (read from the `preamble` of onchain/orilife_treasury/plutus.json).
       # A gate on a floating compiler goes red or green according to something outside this repo.
       - if: steps.present.outputs.present == 'yes'
         run: |

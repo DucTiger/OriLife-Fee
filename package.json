@@ -2,22 +2,17 @@
   "name": "@orilife/fee",
   "version": "0.1.0",
   "type": "module",
-  "description": "OriLife — task-fee pricing for users, plus the bridge that deposits LAMP into treasury buckets (LAMP Treasury Collect).",
+  "description": "OriLife — the OriLife side of MAGIC pricing: parse op_declaration, quote it against the ConsumeMAGIC PriceParam beacon, plan the ConsumeMAGIC transactions. Network fees are paid in ADA.",
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
-    "e2e:emulator": "tsx e2e/collect_emulator.ts",
-    "preview:deploy": "tsx scripts/01_deploy_custody_preview.ts",
-    "preview:collect": "tsx scripts/02_collect_preview.ts"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@lucid-evolution/lucid": "^0.4.0",
-    "dotenv": "^17.4.2"
+    "@lucid-evolution/lucid": "^0.4.0"
   },
   "devDependencies": {
     "@types/node": "^25.9.2",
-    "tsx": "^4.19.0",
     "typescript": "^5.4.0",
     "vitest": "^1.6.0"
   }

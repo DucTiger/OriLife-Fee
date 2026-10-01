@@ -1,6 +1,5 @@
-// @orilife/fee — OriLife task-fee pricing plus the bridge that deposits LAMP into treasury buckets.
-export * from "./params.js";
-export * from "./buckets.js";
-export * from "./tasks.js";
-export * from "./feeEngine.js";
-export * from "./bridge.js";
+// @orilife/fee — the OriLife side of MAGIC pricing: read `op_declaration`, quote it against the
+// PriceParam beacon, and plan the ConsumeMAGIC transactions. No I/O, no network.
+export * from "./opDeclaration.js";
+export * from "./magicPrice.js";
+export * from "./consumePlan.js";

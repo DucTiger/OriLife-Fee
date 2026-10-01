@@ -24,5 +24,6 @@ CLAUDE.md
 .claude/
 _wt-*
 
-# LAMP pinned to a commit, materialised by scripts/pin-lamp.sh — never commit another repo's code here.
+# Left on machines that ran the removed LAMP prototype's pin script (docs/lamp-prototype.md).
+# Still ignored so that a stale local copy of another repository is never committed here.
 vendor/lamp/

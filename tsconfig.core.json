@@ -1,33 +1,4 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "lib": [
-      "ES2022"
-    ],
-    "types": [
-      "node"
-    ],
-    "strict": true,
-    "noUncheckedIndexedAccess": true,
-    "exactOptionalPropertyTypes": false,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "declaration": true,
-    "outDir": "dist"
-  },
-  "include": [
-    "src",
-    "tests"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "vendor",
-    "src/treasuryClient.ts",
-    "tests/emulator.integration.test.ts"
-  ],
-  "$comment": "The CORE: imports nothing from vendor/lamp, so a fresh clone compiles. The CI gate uses this file. The full tsconfig.json needs the LAMP repository — see scripts/pin-lamp.sh."
+  "extends": "./tsconfig.json",
+  "$comment": "The file the CI gate compiles (.github/workflows/ci.yml, job `core`). It used to exclude the LAMP bridge layer, which needed another repository on disk; that layer is gone, so it now covers exactly what tsconfig.json covers."
 }
