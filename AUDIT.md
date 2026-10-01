@@ -1,13 +1,43 @@
-# AUDIT — orilife-fee (OriLife task fees → treasury)
+# AUDIT — orilife-fee
 
-**Built:** 2026-06-09 · **Re-measured and corrected:** 2026-08-21
-**Scope:** the pricing core for OriLife user task fees, plus the bridge that deposits the
+## 2026-10-02 — MAGIC pricing replaces the LAMP prototype
+
+OriLife services are priced in MAGIC; network fees are paid in ADA. The LAMP quote engine and
+bridge were removed and replaced by three pure modules: `src/opDeclaration.ts` (parse
+`op_declaration`, OriLife-Core contract §14.6-bis), `src/magicPrice.ts` (`requiredNanogic`,
+`assertPriceFresh`, mirrored from MAGIC `origin/main` `4f5b86db`), `src/consumePlan.ts` (plan and
+quote ConsumeMAGIC). Current checks, what the tests do not pin, and the mutations run against
+them: `STATUS.md`.
+
+Design points a reviewer should check:
+
+- **No price lives in this repository.** Every amount is computed from a PriceParam beacon datum
+  passed in by the caller. The only constants are `NANOGIC_PER_MAGIC` and `Q` (both 10⁹), copied
+  with their source.
+- **Fold, then floor once per line.** Flooring per unit under-charges, and the vault burn must
+  equal the required amount, so the transaction would be rejected.
+- **Absent is not free.** A response without `op_declaration` plans as `not_declared`, a distinct
+  kind from `no_charge` (`ops: []`); `replay` is distinct from both.
+- **Malformed throws.** `parseOpDeclaration` rejects `op_count` that is 0, negative, fractional or
+  above 2⁵³ − 1, an unknown `coverage`, a `coverage` inconsistent with `pending`/`missing`, a unit
+  that does not match a known op code, a count on a non-`ops` line, and an op code that appears
+  twice.
+
+`onchain/` was not touched by this change.
+
+---
+
+The sections below are the audit of the **LAMP prototype** (built 2026-06-09, re-measured
+2026-08-21), kept as history. The code they describe was removed on 2026-10-02 and is at commit
+`fef2ee2`; file names, test counts and commands below refer to that commit, not to the current tree.
+
+**Scope then:** the pricing core for OriLife user task fees, plus the bridge that deposits the
 resulting LAMP into treasury buckets, demonstrated by one real Collect transaction through the
 `custody.custody.spend` Plutus validator.
 
 ---
 
-## 1. What is in the repository
+## 1. What was in the repository (LAMP prototype)
 
 ### Code (`orilife-fee/`)
 | File | Role |

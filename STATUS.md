@@ -1,164 +1,72 @@
-# STATUS — measured 2026-09-21 at `3a50684`
+# STATUS — measured 2026-10-02
 
-This directory existed for a long time but had **never been under any git repository**
-(`git rev-parse` returned `fatal: not a git repository`). The first commit was made to **stop
-losing work**, not to declare anything finished. This file records what was measured, not what
-was hoped.
+Measured on the tree of the commit that added `src/magicPrice.ts`
+(`git log -1 --format=%h -- src/magicPrice.ts`). Every count below carries the command that takes
+it again: a bare number in this file has no way to learn that its subject moved, and this file has
+carried both stale and never-true counts before (see "History").
 
-**Every count in this file is a copy of something the tree can be asked directly, so every count
-now carries the commit it was taken at and the command that takes it again.** That is not
-decoration — it is the repair for two different failures that this file was carrying at once until
-2026-09-21, and only one of them was the kind anyone was watching for.
+## What the repository holds
 
-The visible one was drift. `54 / 54` and `57 / 57` were true on 2026-08-21 and false the moment the
-test file grew. The pull request that refreshed this paragraph was opened before the pull request
-that added those tests and merged after it, so nothing was ever wrong at the moment it was written
-and nothing was ever red. There is no review step that catches this, because there is no step: the
-number simply has no way to learn that its subject moved.
+| Part | Where | State |
+|---|---|---|
+| MAGIC pricing, OriLife side | `src/`, `tests/` | parse `op_declaration`, quote against a PriceParam beacon datum, plan ConsumeMAGIC — pure code |
+| Fee vault + donation escrow | `onchain/` | tCARP prototype on Preprod — unchanged by the MAGIC rewrite |
+| LAMP prototype | removed; record in `docs/lamp-prototype.md` | Preview custody address still holds assets |
 
-The other one had never been true at all. This file said **16** hand-written TypeScript files from
-its first commit; the repository has held **17** at every commit it has ever had, and not one `.ts`
-file has been added or deleted in that span (`git diff --name-status 2b35232 main -- '*.ts'` lists
-four modifications and nothing else). `1671 lines` was wrong on the day it was written too — the
-tree held 1686. A wrong count and a stale count are indistinguishable once written down, which is
-the argument for the command: a reader can re-run it in a second, and cannot re-derive a bare
-number at all.
-
-## Actual size — at `3a50684`, 2026-09-21
-
-17 hand-written TypeScript files, **1963 lines**. Everything else in the directory is
-`node_modules/` and `vendor/lamp/`, both gitignored. No secret file is tracked anywhere in the
-tree — the only dotfiles under version control are `.gitignore` (twice), `.github/workflows/ci.yml`
-and `.env.example`, which holds names and no values.
-
-Ask git, not the filesystem — `find` would also count whatever happens to be lying around untracked:
+## Checks — 2026-10-02
 
 ```
-git ls-tree -r --name-only main | grep -c '\.ts$'
-git ls-tree -r --name-only main | grep '\.ts$' | while read f; do git show "main:$f"; done | wc -l
-git ls-tree -r --name-only main | grep -E '(^|/)\.[a-z]|\.(key|pem|pat|mnemonic)$'
+npx tsc --noEmit -p tsconfig.core.json   → exit 0
+npx tsc --noEmit                          → exit 0
+npx vitest run                            → 41 / 41 pass, 3 files
 ```
 
-## Checks — green at `3a50684`, 2026-09-21
+`tsconfig.core.json` now extends `tsconfig.json` and covers the same files: the split existed only
+because the LAMP bridge layer needed another repository on disk. CI runs the first and third
+commands (`.github/workflows/ci.yml`, job `core`), so the gate and a local run see the same tests.
 
-```
-npx tsc --noEmit                                  → 0 errors      (needs vendor/lamp)
-npx vitest run                                    → 67 / 67 pass, 4 files
-npx tsc --noEmit -p tsconfig.core.json            → 0 errors      (no LAMP needed)
-npx vitest run tests/feeEngine.test.ts \
-               tests/bridge.test.ts \
-               tests/custodyAddress.test.ts       → 64 / 64 pass, 3 files
-```
+Two mutations were run against the suite on 2026-10-02 and both turned it red: flooring per unit
+instead of once per line (`src/magicPrice.ts` `requiredNanogic`, 3 tests red), and reporting an
+absent declaration as `no_charge` (`src/consumePlan.ts` `planConsume`, 4 tests red).
 
-The second pair is what CI runs, because CI has no copy of LAMP. The difference between the two —
-`tests/emulator.integration.test.ts`, three tests — is the honest measure of what the gate does not see.
+## What the tests do not pin
 
-Before the pin existed, `tsc` reported 1 error and `vitest` 51/54, all three tracing back to
-`src/treasuryClient.ts:66` (`CollectParams` missing `validFromMs`, `msPerEpoch`). The real cause
-was not in that file.
+- **The formula is a copy.** `requiredNanogic` mirrors MAGIC's `requiredFromBeacon` and on-chain
+  `required_for` at MAGIC `origin/main` `4f5b86db`. The parity vector in `tests/magicPrice.test.ts`
+  is copied from MAGIC's own test, so it pins this copy to MAGIC's value **as of that commit**. If
+  MAGIC changes its formula, nothing here turns red.
+- **The declaration shape is a copy.** `parseOpDeclaration` follows OriLife-Core
+  `MOBILE-API-CONTRACT.md` §14.6-bis at Core `origin/main` `dca31f3`. A shape change in Core shows
+  up as a thrown error at runtime, not as a red test here.
+- **Beacon validity is not re-checked.** `requiredNanogic` rejects a missing or duplicated row, but
+  not the other `valid_param` rules (band, price floor, ceiling, ordering); a beacon that breaks
+  them is rejected by the chain, not here.
 
-**This repository used to import LAMP source through relative paths that climbed out of its own
-root** (`../../../LAMP/...`, 12 of them). That means it compiled against whatever commit LAMP
-happened to be sitting on, on whoever's disk. LAMP changed the `custody` interface from 2 to 3
-parameters on 2026-06-15 (`8e485b3`), so from that day on this repository was red on every machine
-— while the error message talked about `CollectParams` and never mentioned a commit. Three red
-checks were one symptom of **an unpinned dependency**, not three code defects.
+## Onchain (`onchain/`) — carried over from the 2026-09-21 measurement
 
-The fix: `scripts/pin-lamp.sh` materialises `vendor/lamp` from LAMP at exactly commit `ebafc2e1`,
-the LAST commit that still matches the blueprint in `vendor/treasury-custody.plutus.json` — that
-is, matches the custody instance already deployed on Preview. The script pins by the full 40-char
-hash and then verifies by *content* (it greps for the 2-parameter validator signature), because a
-short name alone can resolve to a branch or tag in some other repository. `vendor/lamp/` is
-gitignored: this repository pins another repository's commit, it does not copy that repository's
-code into itself.
+1. `onchain/orilife_treasury/validators/fee_vault.ak` and `donation_escrow.ak`, merged in `2b35232`
+   on 2026-08-21, driven by `onchain/scripts/01_mint_test_carp.mjs` through `06_close_vault.mjs`.
+2. `onchain/scripts/deployed_preprod.json` records a lifecycle executed end to end on Preprod —
+   mint, open, collect, skim, donate, close — each step with its transaction hash. Its `previous`
+   block records an earlier validator revision with no `Close` branch, where every branch forced
+   `lovelace_of(out) >= lovelace_of(in)`: 5,000,000 lovelace at `addr_test1wrxmzy4…` cannot be
+   withdrawn by any redeemer. The 900,000 tCARP at the same address are not stranded — `Operate`
+   still spends those. The current revision has `Close`.
+3. `onchain/scripts/*.mjs` import `@lucid-evolution/lucid` from this repository's root
+   `package.json`; that is the only reason the dependency is still there.
 
-## The Preview custody instance still holds assets — measured
+## History
 
-Address `addr_test1wzz0uxpt58vllu2patcldqa7dvgwkr2j5yagcs8s9lmh37gq34gs9`, read from Blockfrost
-Preview on 2026-08-21:
-
-```
-lovelace                                       12,000,000
-28e916b0…4c414d50   (LAMP)                     19,500,000
-b1474a77…744c414d50 (tLAMP)                   120,000,000
-c123bdfb…744c414d50 (tLAMP, other policy)       1,000,000
-0c2ab8cf…747265732d7265736576 (tres-resev)              1
-171350413…74726561737572792d6c616d70 (treasury-lamp)    1
-```
-
-Two of those are NFTs (quantity 1); three are fungible batches under three different policy IDs,
-only the first of which is the LAMP this repository prices in. Several UTxOs, one of them carrying
-an inline datum with `instance_id = orilife-fee-v1` and a three-line bucket ledger.
-
-**That address holds real assets.** It follows that rebuilding the blueprint against a newer LAMP
-changes the script hash, which changes the address, which means losing the ability to spend what
-is sitting there. That is the reason for the pin — not a preference.
-
-`tests/custodyAddress.test.ts` turns this into a check that runs without LAMP: it derives the
-address from the vendored blueprint and fails if it stops matching `scripts/deployed_preview.json`.
-
-## `scripts/rebuild-blueprint.sh` has been DELETED
-
-It copied the blueprint from LAMP at whatever HEAD was checked out, overwrote the one that
-matched, and then **exited 0 as if it had succeeded**. It is replaced by `scripts/pin-lamp.sh`,
-which does the opposite: it pins, and it refuses if it cannot pin.
-
-Note for anyone following older documentation: `OriLife-Specs/Fee/FeeMechanism-TECH.md` and
-`-EXEC.md` still tell the reader to run the deleted script. Those two lines are wrong.
-
-## Still open
-
-1. The bridge layer (`src/treasuryClient.ts`, `e2e/`, `scripts/*_preview.ts`) only compiles with
-   the LAMP repository on disk. The core layer (`feeEngine`, `bridge`, `buckets`, `tasks`) needs
-   nothing. A public repository whose bridge layer needs a private repository is a real
-   constraint, and the README says so up front rather than letting an outsider discover it by
-   failing.
-2. `src/tasks.ts:28` declares its own price catalogue to be a `PLACEHOLDER`. The fee catalogue
-   actually running in production is
-   `orilife-core/MasterIdentify/core/animal_fee.py::TASK_CATALOG`.
-   The word `PLACEHOLDER` understates the gap, because it points at the numbers. Counted on
-   2026-09-21 against `orilife-core@e13e085`, the two catalogues do not hold the same tasks either:
-   `src/tasks.ts` declares **9** keys, `TASK_CATALOG` declares **16**, and the 9 are a subset. Seven
-   tasks that production charges for are absent here entirely — `animal.verify`, `care.log`,
-   `care.lookup`, `fruit.identify`, `population.count`, `residue.alert`, `tree.verify_add`. A reader
-   told only that the values are simulated would reasonably assume the key set is right.
-   Reproduce both counts:
-   `grep -cE '^  "[a-z0-9._]+": \{' src/tasks.ts` here, and
-   `sed -n '/^TASK_CATALOG/,/^}/p' animal_fee.py | grep -cE '^    "[a-z0-9._]+"'` there.
-3. Two generations of fee code live in this repository, and **both sit on `main`**. The older bridge
-   layer (`src/treasuryClient.ts`, `scripts/*_preview.ts`) reuses the LAMP Treasury Collect layer on
-   Preview. The current one is the purpose-written CARP validator under `onchain/`, merged in
-   `2b35232` on 2026-08-21: `onchain/orilife_treasury/validators/fee_vault.ak` and
-   `donation_escrow.ak`, driven by `onchain/scripts/01_mint_test_carp.mjs` through
-   `06_close_vault.mjs`. **The CARP generation on Preprod is the current one.**
-4. `onchain/scripts/deployed_preprod.json` records a lifecycle already executed end to end on
-   Preprod — mint, open, collect, skim, donate, close — each step carrying its transaction hash.
-   Its `previous` block records the failure of an earlier validator revision: that revision had no
-   `Close` branch and every branch forced `lovelace_of(out) >= lovelace_of(in)`, so 5,000,000
-   lovelace held at `addr_test1wrxmzy4…` cannot be withdrawn by any redeemer. The 900,000 tCARP at
-   the same address are not stranded — `Operate` still spends those; only the lovelace is. Both
-   halves belong here, because the loss decides nothing and the recoverable balance decides whether
-   anyone still has to go back for it. The current revision has `Close`, and `closeTx` is in the
-   same file.
-5. This file said, until 2026-09-14, that the CARP validator lived on an unmerged branch named
-   `claude/hop-dong-phi-carp-preprod`. That was true when written, false two commits later, and by
-   2026-09-21 the branch had been deleted outright. The paragraph outlived the thing it named twice
-   over, which is the point: a document that names a branch does not learn that the branch was
-   merged, and does not learn that it was deleted either. When the answer has to be current, read
-   the tree — `git ls-tree -r main onchain/` — not this paragraph.
-
-   The same paragraph then repeated the mistake in miniature. Until 2026-09-21 it read *"`OriLife-Fee`
-   carries three branches, and that is not one of them"*, which was a second count with nothing
-   holding it to the repository: two of those three were merged and deleted within hours of being
-   counted, and today `git ls-remote --heads origin` returns `main` alone. The sentence needed the
-   branch to be gone, not the number to be three — so the number is out, and the command that
-   answers the question stays.
-
-## Relationship to MCR
-
-**None.** This is the fee and accounting layer; it does not touch tree recognition. The production
-home of the live fee catalogue is
-`orilife-core/MasterIdentify/core/animal_fee.py::TASK_CATALOG`, **not** `src/tasks.ts` here —
-grepping all of `orilife-core` finds no caller pointing at this directory.
+- **Until 2026-10-02** the repository priced tasks in LAMP: `src/feeEngine.ts` and friends, a
+  bridge into a LAMP Treasury custody contract on Preview, pinned to LAMP commit `ebafc2e1` by
+  `scripts/pin-lamp.sh`. All of it is at commit `fef2ee2`; `docs/lamp-prototype.md` records the
+  custody address and its assets.
+- **2026-09-21** (`a21c7a9`): this file was rewritten to attach a command to every count after two
+  failures — counts that went stale when tests were added (`54 / 54`, `57 / 57`), and a file count
+  that had never been true (16 stated, 17 at every commit). Both are why the counts above carry
+  their commands.
+- **2026-09-14**: this file said the CARP validator lived on an unmerged branch; it had been merged
+  two commits later and the branch was deleted by 2026-09-21. For the current state, read the tree
+  (`git ls-tree -r HEAD onchain/`), not a paragraph naming a branch.
 
 OriLife agent
