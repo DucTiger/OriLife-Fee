@@ -42,8 +42,7 @@ The code that builds and spends against this address — `src/treasuryClient.ts`
 `scripts/01_deploy_custody_preview.ts`, `scripts/02_collect_preview.ts`,
 `scripts/config_preview.ts`, `scripts/pin-lamp.sh` (pins LAMP at the commit above), and the
 vendored blueprint `vendor/treasury-custody.plutus.json` — is at commit
-`fef2ee2d1405d0008430cd7ef920082ea2e394ac` on `main`. The archive tag `lamp-prototype-final` will
-be pinned at that commit when this change is pushed.
+`fef2ee2d1405d0008430cd7ef920082ea2e394ac`, which is part of `main`'s history and stays reachable
+from it.
 
-To recover it: `git checkout fef2ee2` (or the tag, once it exists), then follow the README of that
-commit.
+To recover it: `git checkout fef2ee2`, then follow the README of that commit.

@@ -41,8 +41,8 @@ jobs:
       # silently when a file is added.
       - run: npx vitest run
 
-  # Aiken contracts. Runs only when onchain/ is present on the branch being checked: it lives on
-  # the CARP branch, not on main.
+  # Aiken contracts under onchain/ (on main since 2b35232). The job still skips itself when the
+  # directory is absent, so an old branch without it does not fail.
   onchain:
     name: Contracts (aiken check)
     runs-on: ubuntu-latest
