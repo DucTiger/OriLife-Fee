@@ -5,7 +5,12 @@
 //   not_declared — the response has no `op_declaration`. Nothing to consume, and NOT "free":
 //                  the UI must not show a zero price for it.
 //   replay       — the response is an idempotent replay (`idempotent_replay: true`, §14.12).
-//                  The original request was already consumed for; do not consume again.
+//                  The contract's rule is conditional: do not consume again IF a consume was
+//                  already made for that `client_event_id`. A replay also covers the case where
+//                  the first response was lost in transit, so the first run may never have been
+//                  consumed for. This package cannot know which; the plan keeps the declaration
+//                  and the quote keeps the amounts, and the app decides from its own consume
+//                  record keyed by `client_event_id`.
 //   no_charge    — `ops: []`. This run has nothing to consume yet. Not an error.
 //   charge       — one ConsumeMAGIC per `ops` line.
 //
@@ -25,7 +30,7 @@ export interface ConsumeRequest {
 
 export type ConsumePlan =
   | { kind: "not_declared" }
-  | { kind: "replay"; declaration: OpDeclaration }
+  | { kind: "replay"; declaration: OpDeclaration; requests: ConsumeRequest[] }
   | { kind: "no_charge"; declaration: OpDeclaration }
   | { kind: "charge"; declaration: OpDeclaration; requests: ConsumeRequest[] };
 
@@ -41,17 +46,14 @@ export interface PlanOptions {
  */
 export function planConsume(declaration: OpDeclaration | undefined, options: PlanOptions): ConsumePlan {
   if (declaration === undefined) return { kind: "not_declared" };
-  if (options.idempotentReplay) return { kind: "replay", declaration };
-  if (declaration.ops.length === 0) return { kind: "no_charge", declaration };
-  return {
-    kind: "charge",
-    declaration,
-    requests: declaration.ops.map((line) => ({
-      opType: line.opType,
-      opCount: BigInt(line.opCount),
-      unit: line.unit,
-    })),
-  };
+  const requests = declaration.ops.map((line) => ({
+    opType: line.opType,
+    opCount: BigInt(line.opCount),
+    unit: line.unit,
+  }));
+  if (options.idempotentReplay) return { kind: "replay", declaration, requests };
+  if (requests.length === 0) return { kind: "no_charge", declaration };
+  return { kind: "charge", declaration, requests };
 }
 
 /**
@@ -83,9 +85,14 @@ export interface QuotedLine extends ConsumeRequest {
 
 export type ConsumeQuote =
   | { kind: "not_declared" }
-  | { kind: "replay" }
+  | { kind: "replay"; lines: QuotedLine[]; totalNanogic: bigint; coverage: Coverage }
   | { kind: "no_charge"; coverage: Coverage }
   | { kind: "charge"; lines: QuotedLine[]; totalNanogic: bigint; coverage: Coverage };
+
+function priceRequests(requests: ConsumeRequest[], pp: PriceParam): { lines: QuotedLine[]; totalNanogic: bigint } {
+  const lines = requests.map((r) => ({ ...r, requiredNanogic: requiredNanogic(pp, r.opType, r.opCount) }));
+  return { lines, totalNanogic: lines.reduce((sum, l) => sum + l.requiredNanogic, 0n) };
+}
 
 /**
  * Price a plan against a PriceParam beacon datum.
@@ -94,6 +101,9 @@ export type ConsumeQuote =
  * sum of those — which is exactly what the vaults will burn. `coverage` is passed through so the
  * UI can say when the total is partial (`policy_partial`) or suspect (`anomaly`).
  *
+ * A `replay` is priced the same way as a `charge`: whether to consume is the app's decision
+ * (see the header), and it needs the amounts to make it.
+ *
  * The caller is responsible for checking the beacon's age first (`assertPriceFresh`).
  */
 export function quoteConsume(plan: ConsumePlan, pp: PriceParam): ConsumeQuote {
@@ -101,16 +111,10 @@ export function quoteConsume(plan: ConsumePlan, pp: PriceParam): ConsumeQuote {
     case "not_declared":
       return { kind: "not_declared" };
     case "replay":
-      return { kind: "replay" };
+      return { kind: "replay", ...priceRequests(plan.requests, pp), coverage: plan.declaration.coverage };
     case "no_charge":
       return { kind: "no_charge", coverage: plan.declaration.coverage };
-    case "charge": {
-      const lines = plan.requests.map((r) => ({
-        ...r,
-        requiredNanogic: requiredNanogic(pp, r.opType, r.opCount),
-      }));
-      const totalNanogic = lines.reduce((sum, l) => sum + l.requiredNanogic, 0n);
-      return { kind: "charge", lines, totalNanogic, coverage: plan.declaration.coverage };
-    }
+    case "charge":
+      return { kind: "charge", ...priceRequests(plan.requests, pp), coverage: plan.declaration.coverage };
   }
 }

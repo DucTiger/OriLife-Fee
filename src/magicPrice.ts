@@ -8,9 +8,9 @@
 //   - ConsumeMAGIC/onchain/lib/magiclamp/consume/pricing.ak  `required_for`, `q`
 //   - ConsumeMAGIC/offchain/src/consume.ts                   `requiredFromBeacon`
 //   - ConsumeMAGIC/onchain/validators/consume.ak             stale-price check (`max_price_stale`)
-// When those change, this file is stale. The parity vector in tests/magicPrice.test.ts is copied
-// from MAGIC's own test (ConsumeMAGIC/tests/consume_required.test.ts) so a drift in the formula
-// shows up as a red test here.
+// When those change, this file is stale and nothing here turns red: the parity vector in
+// tests/magicPrice.test.ts is copied from MAGIC's own test (ConsumeMAGIC/tests/
+// consume_required.test.ts), so it pins this copy to MAGIC's value as of the commit above only.
 
 /** 1 MAGIC = 10^9 nanogic. */
 export const NANOGIC_PER_MAGIC = 1_000_000_000n;
@@ -52,6 +52,11 @@ export class PriceQuoteError extends Error {
  * Throws when op_count < 1 (on-chain `expect op_count >= 1`), when the beacon has no row for
  * opType (no fallback price on the money path), and when it has more than one row for opType
  * (the on-chain `valid_param` rejects such a beacon, so any number computed from it is wrong).
+ *
+ * Also throws when `base_price` or `demand_mult` is negative (JS BigInt division truncates toward
+ * zero, Aiken floors, so the two disagree below zero), and when the result is 0 (on-chain
+ * `expect required > 0`; MAGIC's builder throws CONSUME-003) — a zero must never reach the UI as a
+ * price. The remaining `valid_param` rules (band, ordering, ceiling) are left to the chain.
  */
 export function requiredNanogic(pp: PriceParam, opType: number, opCount: bigint): bigint {
   if (opCount < 1n) {
@@ -65,7 +70,28 @@ export function requiredNanogic(pp: PriceParam, opType: number, opCount: bigint)
     throw new PriceQuoteError(`price beacon has ${rows.length} rows for op_type ${opType}`);
   }
   const row = rows[0]!;
-  return (row.base_price * row.demand_mult * opCount) / Q;
+  if (row.base_price < 0n || row.demand_mult < 0n) {
+    throw new PriceQuoteError(`price beacon row for op_type ${opType} has a negative operand`);
+  }
+  const required = (row.base_price * row.demand_mult * opCount) / Q;
+  if (required <= 0n) {
+    throw new PriceQuoteError(`price for op_type ${opType} × ${opCount} is 0; the chain rejects it`);
+  }
+  return required;
+}
+
+/**
+ * The epoch number the ConsumeMAGIC validator compares against `pp.epoch`.
+ *
+ * It is NOT the Cardano epoch number. On-chain it is `hi / ms_per_epoch`, where `hi` is the upper
+ * bound of the transaction's validity range in POSIX milliseconds (`util.ak` `get_epoch`); MAGIC's
+ * builder computes it the same way from the tip (`consume.ts` `buildConsumeTx`:
+ * `tipPosixMs / mspe`). `msPerEpoch` is a parameter of the deployed instance.
+ */
+export function priceEpochAt(posixMs: bigint, msPerEpoch: bigint): bigint {
+  if (msPerEpoch <= 0n) throw new PriceQuoteError(`ms_per_epoch must be > 0, got ${msPerEpoch}`);
+  if (posixMs < 0n) throw new PriceQuoteError(`POSIX time must be ≥ 0, got ${posixMs}`);
+  return posixMs / msPerEpoch;
 }
 
 /**
@@ -73,6 +99,8 @@ export function requiredNanogic(pp: PriceParam, opType: number, opCount: bigint)
  * (consume.ak: `current_epoch >= pp.epoch` and `current_epoch - pp.epoch <= max_price_stale`).
  * A quote from a stale beacon describes a transaction the chain will reject.
  *
+ * `currentEpoch` comes from `priceEpochAt` — not the Cardano epoch number, which is on a different
+ * scale and would make every beacon look as if it came from the future.
  * `maxPriceStale` is a parameter of the deployed ConsumeMAGIC instance, not of this repository.
  */
 export function assertPriceFresh(pp: PriceParam, currentEpoch: bigint, maxPriceStale: bigint): void {

@@ -1,7 +1,7 @@
 # STATUS — measured 2026-10-02
 
-Measured on the tree of the commit that added `src/magicPrice.ts`
-(`git log -1 --format=%h -- src/magicPrice.ts`). Every count below carries the command that takes
+Measured on the tree of the last commit that touched `src/`
+(`git log -1 --format=%h -- src/`). Every count below carries the command that takes
 it again: a bare number in this file has no way to learn that its subject moved, and this file has
 carried both stale and never-true counts before (see "History").
 
@@ -18,16 +18,21 @@ carried both stale and never-true counts before (see "History").
 ```
 npx tsc --noEmit -p tsconfig.core.json   → exit 0
 npx tsc --noEmit                          → exit 0
-npx vitest run                            → 41 / 41 pass, 3 files
+npx vitest run                            → 50 / 50 pass, 3 files
 ```
 
 `tsconfig.core.json` now extends `tsconfig.json` and covers the same files: the split existed only
 because the LAMP bridge layer needed another repository on disk. CI runs the first and third
 commands (`.github/workflows/ci.yml`, job `core`), so the gate and a local run see the same tests.
 
-Two mutations were run against the suite on 2026-10-02 and both turned it red: flooring per unit
-instead of once per line (`src/magicPrice.ts` `requiredNanogic`, 3 tests red), and reporting an
-absent declaration as `no_charge` (`src/consumePlan.ts` `planConsume`, 4 tests red).
+Mutations run against the suite on 2026-10-02, each with its own marker in the mutated line and
+the whole suite run again; every one turned it red:
+- flooring per unit instead of once per line (`requiredNanogic`, 3 red), and reporting an absent
+  declaration as `no_charge` (`planConsume`, 4 red);
+- `anomaly` no longer winning over `policy_partial`; `reason` no longer required on `pending` or on
+  `missing`; an absent `pending` read as empty; an absent `not_applicable` thrown on (each 1 red);
+- a replay planned with no lines (2 red); a zero price allowed; a negative operand allowed;
+  `priceEpochAt` rounding up (each 1 red).
 
 ## What the tests do not pin
 
@@ -38,9 +43,12 @@ absent declaration as `no_charge` (`src/consumePlan.ts` `planConsume`, 4 tests r
 - **The declaration shape is a copy.** `parseOpDeclaration` follows OriLife-Core
   `MOBILE-API-CONTRACT.md` §14.6-bis at Core `origin/main` `dca31f3`. A shape change in Core shows
   up as a thrown error at runtime, not as a red test here.
-- **Beacon validity is not re-checked.** `requiredNanogic` rejects a missing or duplicated row, but
-  not the other `valid_param` rules (band, price floor, ceiling, ordering); a beacon that breaks
-  them is rejected by the chain, not here.
+- **Beacon validity is only partly re-checked.** `requiredNanogic` rejects a missing or duplicated
+  row, a negative operand and a zero result, but not the other `valid_param` rules (band, ceiling,
+  ordering); a beacon that breaks them is rejected by the chain, not here.
+- **Whether a replay was already consumed for is not decided here.** `replay` keeps its lines and
+  amounts; the decision needs the app's own record keyed by `client_event_id`, which this package
+  does not hold.
 
 ## Onchain (`onchain/`) — carried over from the 2026-09-21 measurement
 

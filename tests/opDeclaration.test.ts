@@ -39,6 +39,37 @@ describe("parseOpDeclaration — accepts the contract's shapes", () => {
     expect(d.notApplicable).toEqual([{ opType: 1, unit: "image" }]);
   });
 
+  it("parses an anomaly: a code in `missing` makes coverage anomaly even with pending present", () => {
+    // Core's rule (`magic_ops.py` OpDeclaration.coverage): anomaly wins over policy_partial.
+    // "khai lượng 0" is the reason Core writes when a measured count comes out as zero.
+    const decl = parseOpDeclaration({
+      task_key: "fruit.video",
+      ops: [],
+      pending: [{ op_type: 3, unit: "storage_event", reason: "..." }],
+      missing: [{ op_type: 1, unit: "image", reason: "khai lượng 0" }],
+      not_applicable: [],
+      coverage: "anomaly",
+    });
+    expect(decl.coverage).toBe("anomaly");
+    expect(() =>
+      parseOpDeclaration({
+        task_key: "fruit.video",
+        ops: [],
+        pending: [{ op_type: 3, unit: "storage_event", reason: "..." }],
+        missing: [{ op_type: 1, unit: "image", reason: "khai lượng 0" }],
+        not_applicable: [],
+        coverage: "policy_partial",
+      }),
+    ).toThrow(OpDeclarationError);
+  });
+
+  it("reads an absent not_applicable (Core before contract v2.51) as empty", () => {
+    const { not_applicable: _drop, ...older } = contractExample;
+    const decl = parseOpDeclaration(older);
+    expect(decl.notApplicable).toEqual([]);
+    expect(decl.coverage).toBe("policy_partial");
+  });
+
   it("accepts op_count = 2^53 − 1 and an unknown op code with its own unit", () => {
     const d = parseOpDeclaration(withOps([{ op_type: 9, op_count: MAX_OP_COUNT, unit: "widget" }]));
     expect(d.ops[0]).toEqual({ opType: 9, opCount: 2 ** 53 - 1, unit: "widget" });
@@ -107,9 +138,28 @@ describe("parseOpDeclaration — throws on strange shapes", () => {
     );
   });
 
+  it("pending or missing without a reason", () => {
+    expect(() => parseOpDeclaration({ ...contractExample, pending: [{ op_type: 3, unit: "storage_event" }] })).toThrow(
+      /pending\[0\]\.reason/,
+    );
+    expect(() =>
+      parseOpDeclaration({
+        ...contractExample,
+        pending: [],
+        missing: [{ op_type: 3, unit: "storage_event" }],
+        coverage: "anomaly",
+      }),
+    ).toThrow(/missing\[0\]\.reason/);
+  });
+
   it("missing arrays, null, non-object", () => {
     const { missing: _drop, ...noMissing } = contractExample;
     expect(() => parseOpDeclaration(noMissing)).toThrow(/`missing` must be an array/);
+    const { pending: _dropPending, ...noPending } = contractExample;
+    expect(() => parseOpDeclaration(noPending)).toThrow(/`pending` must be an array/);
+    expect(() => parseOpDeclaration({ ...contractExample, not_applicable: null })).toThrow(
+      /`not_applicable` must be an array/,
+    );
     expect(() => parseOpDeclaration(null)).toThrow(OpDeclarationError);
     expect(() => parseOpDeclaration([])).toThrow(OpDeclarationError);
     expect(() => parseOpDeclaration({ ...contractExample, task_key: "" })).toThrow(/task_key/);

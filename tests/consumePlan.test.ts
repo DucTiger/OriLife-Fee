@@ -52,10 +52,13 @@ describe("planConsume — four outcomes stay distinct", () => {
     expect(planConsume(undefined, { idempotentReplay: true }).kind).toBe("not_declared");
   });
 
-  it("replay: a replayed declaration is not consumed again", () => {
+  it("replay: kept apart from charge, but still carries what was declared", () => {
+    // A replay may follow a first response lost in transit (§14.12), so the first run may never
+    // have been consumed for. The app decides from its own record; it needs the lines to do so.
     const plan = planConsume(parseOpDeclaration(contractExample), { idempotentReplay: true });
     expect(plan.kind).toBe("replay");
-    expect("requests" in plan).toBe(false);
+    if (plan.kind !== "replay") throw new Error("unreachable");
+    expect(plan.requests).toEqual([{ opType: 1, opCount: 3n, unit: "image" }]);
   });
 });
 
@@ -88,11 +91,16 @@ describe("quoteConsume", () => {
     expect(quote.totalNanogic).toBe(1_353_333_333n);
   });
 
-  it("not_declared, replay and no_charge carry no amount at all", () => {
+  it("replay is priced like charge and keeps coverage, under its own kind", () => {
+    const quote = quoteConsume(planConsume(parseOpDeclaration(contractExample), { idempotentReplay: true }), beacon);
+    expect(quote.kind).toBe("replay");
+    if (quote.kind !== "replay") throw new Error("unreachable");
+    expect(quote.totalNanogic).toBe(30_000_000n);
+    expect(quote.coverage).toBe("policy_partial");
+  });
+
+  it("not_declared and no_charge carry no amount at all", () => {
     expect(quoteConsume(planConsume(undefined, { idempotentReplay: false }), beacon)).toEqual({ kind: "not_declared" });
-    expect(quoteConsume(planConsume(parseOpDeclaration(contractExample), { idempotentReplay: true }), beacon)).toEqual({
-      kind: "replay",
-    });
     expect(quoteConsume(planConsume(storageOnly, { idempotentReplay: false }), beacon)).toEqual({
       kind: "no_charge",
       coverage: "policy_partial",

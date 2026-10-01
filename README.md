@@ -24,7 +24,9 @@ share of fee inflow to the Cardano treasury (see below).
    - `no_charge` — `ops: []`, nothing to consume for this run;
    - `not_declared` — the field is absent: nothing to consume, and the UI must **not** show it as
      free;
-   - `replay` — an idempotent replay of a request already consumed for: do not consume again.
+   - `replay` — an idempotent replay (`idempotent_replay: true`). The first response may have been
+     lost before the consume was made, so the plan and quote keep the lines and amounts; the app
+     consumes only if its own record shows no consume for that `client_event_id`.
 3. **The price comes from the PriceParam beacon** (`quoteConsume`, `requiredNanogic`):
    `required = ⌊ base_price × demand_mult × op_count / Q ⌋` nanogic, multiplied first and floored
    once — the same formula as MAGIC's `requiredFromBeacon` and the on-chain `required_for`. The
@@ -33,16 +35,17 @@ share of fee inflow to the Cardano treasury (see below).
 4. **MAGIC's SDK builds the transaction and the user signs it.** The Cardano network fee for that
    transaction is ADA.
 
-OriLife-Core responses also carry an older `fee_quote` field (§14.6), denominated in LAMP and ADA.
-It is being removed from OriLife-Core and is not used here.
+Some OriLife-Core versions also return an older `fee_quote` field (§14.6), denominated in LAMP and
+ADA. This package does not read it.
 
 ## Using it
 
 ```ts
-import { assertPriceFresh, planConsumeFromResponse, quoteConsume } from "@orilife/fee";
+import { assertPriceFresh, planConsumeFromResponse, priceEpochAt, quoteConsume } from "@orilife/fee";
 
 const plan = planConsumeFromResponse(responseBody); // throws if op_declaration is malformed
-assertPriceFresh(priceParam, currentEpoch, maxPriceStale);
+// The validator's epoch is POSIX ms / ms_per_epoch, not the Cardano epoch number.
+assertPriceFresh(priceParam, priceEpochAt(tipPosixMs, msPerEpoch), maxPriceStale);
 const quote = quoteConsume(plan, priceParam);      // kind: charge | no_charge | not_declared | replay
 ```
 
@@ -51,7 +54,7 @@ For `POST /api/identify/auto` the declaration is at `result.op_declaration`; pas
 | Module | Contains |
 |---|---|
 | `src/opDeclaration.ts` | `parseOpDeclaration` — validates the §14.6-bis shape, throws on anything else |
-| `src/magicPrice.ts` | `PriceParam`/`OpPrice` types, `requiredNanogic`, `assertPriceFresh`, `NANOGIC_PER_MAGIC`, `Q` |
+| `src/magicPrice.ts` | `PriceParam`/`OpPrice` types, `requiredNanogic`, `priceEpochAt`, `assertPriceFresh`, `NANOGIC_PER_MAGIC`, `Q` |
 | `src/consumePlan.ts` | `planConsume`, `planConsumeFromResponse`, `quoteConsume` |
 
 Pure code: no I/O, no network, no dependency on another repository.

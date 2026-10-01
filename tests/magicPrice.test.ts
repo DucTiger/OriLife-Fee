@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { type PriceParam, Q, assertPriceFresh, requiredNanogic } from "../src/magicPrice.js";
+import {
+  type PriceParam,
+  PriceQuoteError,
+  Q,
+  assertPriceFresh,
+  priceEpochAt,
+  requiredNanogic,
+} from "../src/magicPrice.js";
 
 // Test beacons. These numbers are fixtures, not prices: they are copied from MAGIC's own test
 // `ConsumeMAGIC/tests/consume_required.test.ts` at MagicLampEco/MAGIC origin/main 4f5b86db, so the
@@ -76,5 +83,38 @@ describe("assertPriceFresh — mirrors consume.ak's stale-price check", () => {
 
   it("rejects a beacon from the future", () => {
     expect(() => assertPriceFresh(beacon, 5n, 2n)).toThrow(/ahead of the current epoch/);
+  });
+});
+
+describe("priceEpochAt — the validator's epoch, not Cardano's", () => {
+  it("is POSIX ms divided by ms_per_epoch, floored", () => {
+    const day = 86_400_000n;
+    expect(priceEpochAt(20_000n * day + day - 1n, day)).toBe(20_000n);
+    expect(priceEpochAt(20_001n * day, day)).toBe(20_001n);
+  });
+
+  it("feeds assertPriceFresh on the same scale as pp.epoch", () => {
+    const day = 86_400_000n;
+    const pp: PriceParam = { ...beacon, epoch: 20_000n };
+    expect(() => assertPriceFresh(pp, priceEpochAt(20_001n * day, day), 2n)).not.toThrow();
+  });
+
+  it("rejects ms_per_epoch ≤ 0 and negative time", () => {
+    expect(() => priceEpochAt(1n, 0n)).toThrow(PriceQuoteError);
+    expect(() => priceEpochAt(-1n, 1n)).toThrow(PriceQuoteError);
+  });
+});
+
+describe("requiredNanogic — never returns a number the chain would reject", () => {
+  it("throws on a zero result instead of quoting it as free", () => {
+    const zero: PriceParam = { ...beacon, op_prices: [{ op_type: 1n, base_price: 0n, demand_mult: Q }] };
+    expect(() => requiredNanogic(zero, 1, 1n)).toThrow(/is 0/);
+  });
+
+  it("throws on a negative base_price or demand_mult", () => {
+    const negBase: PriceParam = { ...beacon, op_prices: [{ op_type: 1n, base_price: -3n, demand_mult: Q }] };
+    const negMult: PriceParam = { ...beacon, op_prices: [{ op_type: 1n, base_price: 3n, demand_mult: -Q }] };
+    expect(() => requiredNanogic(negBase, 1, 1n)).toThrow(/negative/);
+    expect(() => requiredNanogic(negMult, 1, 1n)).toThrow(/negative/);
   });
 });

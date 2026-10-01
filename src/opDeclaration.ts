@@ -174,8 +174,11 @@ export function parseOpDeclaration(raw: unknown): OpDeclaration {
   const ops = requireArray(raw, "ops").map((x, i) => parseOpLine(x, `ops[${i}]`));
   const pending = requireArray(raw, "pending").map((x, i) => parseOpNote(x, `pending[${i}]`, true));
   const missing = requireArray(raw, "missing").map((x, i) => parseOpNote(x, `missing[${i}]`, true));
-  const notApplicable = requireArray(raw, "not_applicable").map((x, i) =>
-    parseOpNote(x, `not_applicable[${i}]`, false),
+  // `not_applicable` is additive since contract v2.51; a Core older than that omits it. Absent is
+  // read as [] — it carries no amount and does not enter `coverage`, so nothing priced changes.
+  // Present but not an array still throws.
+  const notApplicable = (raw.not_applicable === undefined ? [] : requireArray(raw, "not_applicable")).map(
+    (x, i) => parseOpNote(x, `not_applicable[${i}]`, false),
   );
 
   // One op code appears in at most one place. Two `ops` lines for the same code would be two
