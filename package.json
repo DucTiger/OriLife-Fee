@@ -1,6 +1,7 @@
 {
   "name": "@orilife/fee",
   "version": "0.1.0",
+  "private": true,
   "type": "module",
   "description": "OriLife — the OriLife side of MAGIC pricing: parse op_declaration, quote it against the ConsumeMAGIC PriceParam beacon, plan the ConsumeMAGIC transactions. Network fees are paid in ADA.",
   "scripts": {
@@ -8,10 +9,8 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": {
-    "@lucid-evolution/lucid": "^0.4.0"
-  },
   "devDependencies": {
+    "@lucid-evolution/lucid": "^0.4.0",
     "@types/node": "^25.9.2",
     "typescript": "^5.4.0",
     "vitest": "^1.6.0"

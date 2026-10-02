@@ -30,8 +30,36 @@ const storageOnly = parseOpDeclaration({
   coverage: "policy_partial",
 });
 
-describe("planConsume — four outcomes stay distinct", () => {
-  it("charge: one ConsumeMAGIC request per ops line", () => {
+// `tree.scan` with compute declared (`OLT_MAGIC_DECLARE_COMPUTE=1`): two lines, one task.
+const twoLines = parseOpDeclaration({
+  task_key: "tree.scan",
+  ops: [
+    { op_type: 1, op_count: 2, unit: "image" },
+    { op_type: 4, op_count: 5, unit: "compute_event" },
+  ],
+  pending: [],
+  missing: [],
+  not_applicable: [],
+  coverage: "full",
+});
+
+describe("planConsume — outcomes stay distinct", () => {
+  it("multi_line_held: one task is one transaction, so two lines are held, not split in two", () => {
+    const plan = planConsume(twoLines, { idempotentReplay: false });
+    expect(plan.kind).toBe("multi_line_held");
+    if (plan.kind !== "multi_line_held") throw new Error("unreachable");
+    expect(plan.requests.map((r) => r.opType)).toEqual([1, 4]);
+  });
+
+  it("multi_line_held wins over replay: a held run was never charged either", () => {
+    expect(planConsume(twoLines, { idempotentReplay: true }).kind).toBe("multi_line_held");
+  });
+
+  it("a replay of `ops: []` is no_charge: there is no amount to show", () => {
+    expect(planConsume(storageOnly, { idempotentReplay: true }).kind).toBe("no_charge");
+  });
+
+  it("charge: one line, one ConsumeMAGIC request", () => {
     const plan = planConsume(parseOpDeclaration(contractExample), { idempotentReplay: false });
     expect(plan.kind).toBe("charge");
     if (plan.kind !== "charge") throw new Error("unreachable");
@@ -73,13 +101,10 @@ describe("quoteConsume", () => {
     });
   });
 
-  it("each line is floored once on its own; the total is the sum of those", () => {
+  it("a single line is floored once: 1000 × 1_000_000 × 1.333333333 → 1_333_333_333", () => {
     const decl = parseOpDeclaration({
       task_key: "tree.scan",
-      ops: [
-        { op_type: 1, op_count: 2, unit: "image" },
-        { op_type: 4, op_count: 1000, unit: "compute_event" },
-      ],
+      ops: [{ op_type: 4, op_count: 1000, unit: "compute_event" }],
       pending: [],
       missing: [],
       not_applicable: [],
@@ -87,8 +112,13 @@ describe("quoteConsume", () => {
     });
     const quote = quoteConsume(planConsume(decl, { idempotentReplay: false }), beacon);
     if (quote.kind !== "charge") throw new Error(`expected charge, got ${quote.kind}`);
-    expect(quote.lines.map((l) => l.requiredNanogic)).toEqual([20_000_000n, 1_333_333_333n]);
-    expect(quote.totalNanogic).toBe(1_353_333_333n);
+    expect(quote.lines.map((l) => l.requiredNanogic)).toEqual([1_333_333_333n]);
+    expect(quote.totalNanogic).toBe(1_333_333_333n);
+  });
+
+  it("multi_line_held carries no amount: how MAGIC floors several pairs is not decided", () => {
+    const quote = quoteConsume(planConsume(twoLines, { idempotentReplay: false }), beacon);
+    expect(quote).toEqual({ kind: "multi_line_held", lineCount: 2, coverage: "full" });
   });
 
   it("replay is priced like charge and keeps coverage, under its own kind", () => {
@@ -136,6 +166,13 @@ describe("planConsumeFromResponse", () => {
     expect(() => planConsumeFromResponse({ op_declaration: null })).toThrow();
     expect(() => planConsumeFromResponse({ op_declaration: { ...contractExample, ops: "1" } })).toThrow();
     expect(() => planConsumeFromResponse({ op_declaration: contractExample, idempotent_replay: "yes" })).toThrow();
+  });
+
+  it("the whole /api/identify/auto body (declaration under `result`) throws instead of reading as absent", () => {
+    expect(() => planConsumeFromResponse({ ok: true, result: { op_declaration: contractExample } })).toThrow(
+      /pass body\.result/,
+    );
+    expect(planConsumeFromResponse({ op_declaration: contractExample }).kind).toBe("charge");
   });
 });
 

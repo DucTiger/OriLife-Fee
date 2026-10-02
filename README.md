@@ -18,15 +18,23 @@ share of fee inflow to the Cardano treasury (see below).
    `MasterIdentify/core/magic_ops.py` in `OriLife-Core`; shape and rules in
    `MOBILE-API-CONTRACT.md` §14.6-bis.
 2. **This package turns the declaration into a plan** (`planConsume`, `planConsumeFromResponse`).
-   There are four outcomes and they are kept apart:
-   - `charge` — one `ConsumeMAGIC` per line of `ops` (the on-chain `Consume` redeemer carries a
-     single op type and count);
+   There are five outcomes and they are kept apart:
+   - `charge` — `ops` has one line: one `ConsumeMAGIC` transaction (the on-chain `Consume`
+     redeemer carries a single op type and count);
+   - `multi_line_held` — `ops` has more than one line. One task is one transaction, and a
+     transaction carrying several pairs needs a new `ConsumeMAGIC` validator, so the task is not
+     charged yet and is never split into one transaction per line. The quote carries no amount.
+     With the default Core configuration `ops` has at most one line;
    - `no_charge` — `ops: []`, nothing to consume for this run;
    - `not_declared` — the field is absent: nothing to consume, and the UI must **not** show it as
      free;
    - `replay` — an idempotent replay (`idempotent_replay: true`). The first response may have been
      lost before the consume was made, so the plan and quote keep the lines and amounts; the app
-     consumes only if its own record shows no consume for that `client_event_id`.
+     consumes only if its own record shows no consume for that `client_event_id`. A replay of a
+     run with `ops: []` is `no_charge`.
+
+   Code 3 (`storage_event`) in `ops` is refused: Core counts one storage event, not bytes, and
+   always lists it under `pending`.
 3. **The price comes from the PriceParam beacon** (`quoteConsume`, `requiredNanogic`):
    `required = ⌊ base_price × demand_mult × op_count / Q ⌋` nanogic, multiplied first and floored
    once — the same formula as MAGIC's `requiredFromBeacon` and the on-chain `required_for`. The
@@ -40,13 +48,17 @@ ADA. This package does not read it.
 
 ## Using it
 
+The package is not built or published yet (`"private": true`, no `exports`); import the source,
+`src/index.ts`.
+
 ```ts
-import { assertPriceFresh, planConsumeFromResponse, priceEpochAt, quoteConsume } from "@orilife/fee";
+import { assertPriceFresh, planConsumeFromResponse, priceEpochAt, quoteConsume } from "./src/index.js";
 
 const plan = planConsumeFromResponse(responseBody); // throws if op_declaration is malformed
 // The validator's epoch is POSIX ms / ms_per_epoch, not the Cardano epoch number.
 assertPriceFresh(priceParam, priceEpochAt(tipPosixMs, msPerEpoch), maxPriceStale);
-const quote = quoteConsume(plan, priceParam);      // kind: charge | no_charge | not_declared | replay
+const quote = quoteConsume(plan, priceParam);
+// kind: charge | multi_line_held | no_charge | not_declared | replay
 ```
 
 For `POST /api/identify/auto` the declaration is at `result.op_declaration`; pass `body.result`.

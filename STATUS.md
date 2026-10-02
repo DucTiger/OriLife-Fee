@@ -18,7 +18,7 @@ carried both stale and never-true counts before (see "History").
 ```
 npx tsc --noEmit -p tsconfig.core.json   → exit 0
 npx tsc --noEmit                          → exit 0
-npx vitest run                            → 50 / 50 pass, 3 files
+npx vitest run                            → 60 / 60 pass, 3 files
 ```
 
 `tsconfig.core.json` now extends `tsconfig.json` and covers the same files: the split existed only
@@ -32,7 +32,12 @@ the whole suite run again; every one turned it red:
 - `anomaly` no longer winning over `policy_partial`; `reason` no longer required on `pending` or on
   `missing`; an absent `pending` read as empty; an absent `not_applicable` thrown on (each 1 red);
 - a replay planned with no lines (2 red); a zero price allowed; a negative operand allowed;
-  `priceEpochAt` rounding up (each 1 red).
+  `priceEpochAt` rounding up (each 1 red);
+- the multi-line hold removed (3 red); a multi-line replay escaping the hold; a replay checked
+  before `ops: []`; code 3 accepted in `ops`; the whole `/api/identify/auto` body read as "not
+  declared"; `not_applicable` left out of the duplicate check; an empty `reason` on
+  `not_applicable` accepted; an empty `unit` accepted; `op_type` above 2^53 − 1 accepted (each 1
+  red).
 
 ## What the tests do not pin
 
@@ -46,6 +51,9 @@ the whole suite run again; every one turned it red:
 - **Beacon validity is only partly re-checked.** `requiredNanogic` rejects a missing or duplicated
   row, a negative operand and a zero result, but not the other `valid_param` rules (band, ceiling,
   ordering); a beacon that breaks them is rejected by the chain, not here.
+- **A task with more than one `ops` line is held, not charged.** One task is one ConsumeMAGIC
+  transaction, and the redeemer that carries several pairs does not exist yet. When it does, the
+  hold is replaced by a plan for that transaction, priced the way MAGIC floors several pairs.
 - **Whether a replay was already consumed for is not decided here.** `replay` keeps its lines and
   amounts; the decision needs the app's own record keyed by `client_event_id`, which this package
   does not hold.

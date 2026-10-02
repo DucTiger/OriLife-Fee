@@ -164,4 +164,44 @@ describe("parseOpDeclaration — throws on strange shapes", () => {
     expect(() => parseOpDeclaration([])).toThrow(OpDeclarationError);
     expect(() => parseOpDeclaration({ ...contractExample, task_key: "" })).toThrow(/task_key/);
   });
+
+  it("code 3 in ops: Core never charges storage today, so it is refused, not priced", () => {
+    expect(() =>
+      parseOpDeclaration({
+        task_key: "tree.register",
+        ops: [{ op_type: 3, op_count: 200000, unit: "storage_event" }],
+        pending: [],
+        missing: [],
+        not_applicable: [],
+        coverage: "full",
+      }),
+    ).toThrow(/ops\[0\]\.op_type 3 is never charged today/);
+  });
+
+  it("the same op code in missing and not_applicable", () => {
+    expect(() =>
+      parseOpDeclaration({
+        task_key: "evidence.ingest",
+        ops: [],
+        pending: [],
+        missing: [{ op_type: 1, unit: "image", reason: "..." }],
+        not_applicable: [{ op_type: 1, unit: "image" }],
+        coverage: "anomaly",
+      }),
+    ).toThrow(/appears in both `missing` and `not_applicable`/);
+  });
+
+  it("not_applicable with an empty reason (a reason may be absent, never empty)", () => {
+    expect(() =>
+      parseOpDeclaration({ ...contractExample, not_applicable: [{ op_type: 2, unit: "cid", reason: "" }] }),
+    ).toThrow(/not_applicable\[0\]\.reason/);
+  });
+
+  it("an empty unit, even on an op code this package does not know", () => {
+    expect(() => parseOpDeclaration(withOps([{ op_type: 9, op_count: 1, unit: "" }]))).toThrow(/unit must be/);
+  });
+
+  it("op_type above 2^53 − 1", () => {
+    expect(() => parseOpDeclaration(withOps([{ op_type: 2 ** 53, op_count: 1, unit: "x" }]))).toThrow(/op_type/);
+  });
 });

@@ -25,6 +25,12 @@ export const KNOWN_OP_UNITS: Readonly<Record<number, string>> = Object.freeze({
   [OP_COMPUTE]: "compute_event",
 });
 
+/** Codes Core never charges today: code 3 counts one storage event, not bytes, so Core always puts
+ *  it in `pending` (`magic_ops.py` `STORAGE_PENDING_REASON`). A code 3 line in `ops` means a Core
+ *  that drifted back to declaring storage, and is refused here rather than priced. Remove the
+ *  code from this set only when the Registry publishes a unit that Core is allowed to charge. */
+export const OPS_PENDING_ONLY: ReadonlySet<number> = new Set([OP_STORAGE]);
+
 /** Ceiling on `op_count`: 2^53 − 1 (`magic_ops.py` `MAX_OP_COUNT`). Above it a reader that
  *  parses JSON numbers as float64 loses precision silently, and the burn must equal the
  *  required amount exactly. */
@@ -122,6 +128,11 @@ function parseOpCount(v: unknown, where: string): number {
 function parseOpLine(raw: unknown, where: string): OpLine {
   if (!isPlainObject(raw)) throw new OpDeclarationError(`${where} must be an object`);
   const opType = parseOpType(raw.op_type, where);
+  if (OPS_PENDING_ONLY.has(opType)) {
+    throw new OpDeclarationError(
+      `${where}.op_type ${opType} is never charged today; it belongs in \`pending\` (contract §14.6-bis)`,
+    );
+  }
   const opCount = parseOpCount(raw.op_count, where);
   const unit = parseUnit(raw.unit, opType, where);
   return { opType, opCount, unit };
